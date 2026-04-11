@@ -1,4 +1,5 @@
 #include "receiver.h"
+#include "chat_ui.h"
 #include "types.h"
 #include <stdio.h>
 
@@ -11,10 +12,12 @@ DWORD WINAPI receiver_thread(LPVOID socket_param)
     while ((bytes_received = recv(server_socket,
                                   buffer, sizeof(buffer) - 1, 0)) > 0) {
         buffer[bytes_received] = '\0';
-        printf("%s", buffer);
-        fflush(stdout);
+
+        chat_ui_clear_prompt_line();
+        chat_ui_print_received(buffer);
+        chat_ui_show_prompt();
     }
 
-    printf("\n[Connection to server closed]\n");
+    chat_ui_print_disconnect_notice();
     return 0;
 }

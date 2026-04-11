@@ -4,9 +4,12 @@
 #include "connection.h"
 #include "receiver.h"
 #include "input_handler.h"
+#include "chat_ui.h"
 
 int main(void)
 {
+    chat_ui_init();
+
     if (winsock_initialize() != 0) return 1;
 
     SOCKET server_socket = connection_create_and_connect();
