@@ -6,7 +6,6 @@
 #include <string.h>
 #include <time.h>
 
-
 static int is_exit_command(const char *input)
 {
     return strncmp(input, "/exit", 5) == 0;
@@ -55,11 +54,18 @@ static void export_history_with_feedback(void)
     }
 }
 
-
 void input_handler_print_commands(void)
 {
-    printf(COLOR_GRAY "  Comandos disponibles: "
-           COLOR_CYAN "/list  /save  /exit\n"
+    printf(COLOR_GRAY
+           "  Comandos: "
+           COLOR_CYAN "/list  /rooms  /leave  /save  /exit\n"
+           COLOR_RESET
+           COLOR_GRAY
+           "  Para chatear: "
+           COLOR_WHITE "nombre_usuario\n"
+           COLOR_GRAY
+           "  Para entrar a una sala: "
+           COLOR_MAGENTA "#nombre_sala\n"
            COLOR_RESET "\n");
     fflush(stdout);
 }
@@ -73,7 +79,6 @@ void input_handler_run_loop(SOCKET server_socket)
     while (1) {
         if (fgets(input_buffer, sizeof(input_buffer), stdin) == NULL) break;
 
-        /* /save is handled entirely on the client side, not sent to server. */
         if (is_save_command(input_buffer)) {
             export_history_with_feedback();
             chat_ui_show_prompt();
@@ -83,12 +88,10 @@ void input_handler_run_loop(SOCKET server_socket)
         send(server_socket, input_buffer, strlen(input_buffer), 0);
 
         if (is_exit_command(input_buffer)) {
-            /* Auto-export on exit so the user never loses the session. */
             export_history_with_feedback();
             break;
         }
 
-        /* Record every non-command message the user sends. */
         if (!is_any_command(input_buffer)) {
             chat_history_record_sent(input_buffer);
         }

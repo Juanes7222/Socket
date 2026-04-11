@@ -1,6 +1,7 @@
 #include "session.h"
 #include "messaging.h"
 #include "client_store.h"
+#include "room_store.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -16,7 +17,6 @@ void session_register_username(int client_index, const char *username,
            ctx->clients[client_index].fd,
            ctx->clients[client_index].username);
 
-    // Refresh peer list for the new client and all others already waiting.
     messaging_broadcast_available_peers(ctx);
 }
 
@@ -29,9 +29,7 @@ void session_pair_clients(int initiator_index, int target_index,
     ctx->clients[target_index].state         = STATE_IN_CHAT;
 
     const char *start_message =
-        "Chat started. Available commands:\n"
-        "  /exit  - Leave the chat\n"
-        "  /list  - See all connected users\n\n";
+        "Chat started. Commands: /exit, /list\n\n";
 
     messaging_send_raw(ctx->clients[initiator_index].fd, start_message);
     messaging_send_raw(ctx->clients[target_index].fd,    start_message);
@@ -68,14 +66,22 @@ void session_disconnect_client(int client_index, ServerContext *ctx)
            ctx->clients[client_index].username,
            ctx->clients[client_index].fd);
 
-    int peer_index = ctx->clients[client_index].peer_index;
+    ClientState state = ctx->clients[client_index].state;
 
-    if (peer_index > 0 && ctx->clients[peer_index].state == STATE_IN_CHAT) {
-        messaging_send_raw(ctx->clients[peer_index].fd,
-                           "The other user disconnected.\n");
-        ctx->clients[peer_index].state      = STATE_CHOOSING_PEER;
-        ctx->clients[peer_index].peer_index = -1;
-        messaging_send_available_peers(peer_index, ctx);
+    if (state == STATE_IN_CHAT) {
+        int peer_index = ctx->clients[client_index].peer_index;
+        if (peer_index > 0 && ctx->clients[peer_index].state == STATE_IN_CHAT) {
+            messaging_send_raw(ctx->clients[peer_index].fd,
+                               "The other user disconnected.\n");
+            ctx->clients[peer_index].state      = STATE_CHOOSING_PEER;
+            ctx->clients[peer_index].peer_index = -1;
+            messaging_send_available_peers(peer_index, ctx);
+        }
+    } else if (state == STATE_IN_ROOM) {
+        int room_index = ctx->clients[client_index].room_index;
+        room_store_remove_member(room_index, client_index, ctx);
+        messaging_notify_room_leave(room_index, client_index, ctx);
+        room_store_deactivate_if_empty(room_index, ctx);
     }
 
     close(ctx->clients[client_index].fd);

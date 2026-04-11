@@ -4,6 +4,7 @@
 #include "types.h"
 #include "network.h"
 #include "client_store.h"
+#include "room_store.h"
 #include "session.h"
 #include "command_handler.h"
 
@@ -50,6 +51,7 @@ int main(void)
     ctx.fds[0].fd     = listen_fd;
     ctx.fds[0].events = POLLIN;
     client_store_init(&ctx);
+    room_store_init(&ctx);
 
     run_event_loop(listen_fd, &ctx);
 

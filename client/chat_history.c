@@ -5,12 +5,13 @@
 #include <time.h>
 #include <windows.h>
 
-#define SENDER_SELF   "you"
-#define SENDER_SERVER "server"
+#define SENDER_SELF          "you"
+#define SENDER_SERVER        "server"
+#define SENDER_FIELD_MAX     (ROOM_NAME_MAX + USERNAME_MAX_LEN + 5)
 
 typedef struct {
     char timestamp[8];
-    char sender[USERNAME_MAX_LEN];
+    char sender[SENDER_FIELD_MAX];
     char text[BUFFER_SIZE];
 } HistoryEntry;
 
@@ -48,10 +49,8 @@ static void append_entry(const char *sender, const char *text)
     HistoryEntry *entry = &recorded_entries[entry_count];
 
     get_current_timestamp(entry->timestamp, sizeof(entry->timestamp));
-
-    strncpy(entry->sender, sender, USERNAME_MAX_LEN - 1);
-    entry->sender[USERNAME_MAX_LEN - 1] = '\0';
-
+    strncpy(entry->sender, sender, SENDER_FIELD_MAX - 1);
+    entry->sender[SENDER_FIELD_MAX - 1] = '\0';
     strncpy(entry->text, text, BUFFER_SIZE - 1);
     entry->text[BUFFER_SIZE - 1] = '\0';
     strip_trailing_newlines(entry->text);
@@ -59,16 +58,44 @@ static void append_entry(const char *sender, const char *text)
     entry_count++;
 }
 
-/*
- * Detects whether a raw message matches the peer chat pattern "username: body".
- * On match, fills sender_out and body_out and returns 1.
- * Returns 0 for system/server messages.
- */
-static int extract_peer_message_parts(const char *raw,
-                                       char       *sender_out,
-                                       char       *body_out)
+/* Parses "[#roomname] sender: body". Returns 1 on match. */
+static int extract_room_message_parts(const char *raw,
+                                       char *qualified_sender_out,
+                                       char *body_out)
 {
-    const char *colon      = strstr(raw, ": ");
+    if (raw[0] != '[' || raw[1] != '#') return 0;
+
+    const char *room_end = strchr(raw, ']');
+    if (room_end == NULL) return 0;
+
+    int room_len = (int)(room_end - raw) - 2;
+    char room_name[ROOM_NAME_MAX];
+    strncpy(room_name, raw + 2, room_len);
+    room_name[room_len] = '\0';
+
+    const char *rest  = room_end + 2;
+    const char *colon = strstr(rest, ": ");
+    if (colon == NULL) return 0;
+
+    int sender_len = (int)(colon - rest);
+    char sender[USERNAME_MAX_LEN];
+    strncpy(sender, rest, sender_len);
+    sender[sender_len] = '\0';
+
+    snprintf(qualified_sender_out, SENDER_FIELD_MAX,
+             "[#%s] %s", room_name, sender);
+
+    strncpy(body_out, colon + 2, BUFFER_SIZE - 1);
+    body_out[BUFFER_SIZE - 1] = '\0';
+    return 1;
+}
+
+/* Parses "sender: body" for peer messages. Returns 1 on match. */
+static int extract_peer_message_parts(const char *raw,
+                                       char *sender_out,
+                                       char *body_out)
+{
+    const char *colon = strstr(raw, ": ");
     if (colon == NULL) return 0;
 
     int prefix_len = (int)(colon - raw);
@@ -81,10 +108,8 @@ static int extract_peer_message_parts(const char *raw,
 
     strncpy(sender_out, raw, prefix_len);
     sender_out[prefix_len] = '\0';
-
     strncpy(body_out, colon + 2, BUFFER_SIZE - 1);
     body_out[BUFFER_SIZE - 1] = '\0';
-
     return 1;
 }
 
@@ -98,13 +123,15 @@ void chat_history_init(void)
 
 void chat_history_record_received(const char *raw_message)
 {
-    char sender[USERNAME_MAX_LEN];
+    char qualified_sender[SENDER_FIELD_MAX];
     char body[BUFFER_SIZE];
 
     EnterCriticalSection(&history_lock);
 
-    if (extract_peer_message_parts(raw_message, sender, body)) {
-        append_entry(sender, body);
+    if (extract_room_message_parts(raw_message, qualified_sender, body)) {
+        append_entry(qualified_sender, body);
+    } else if (extract_peer_message_parts(raw_message, qualified_sender, body)) {
+        append_entry(qualified_sender, body);
     } else {
         append_entry(SENDER_SERVER, raw_message);
     }

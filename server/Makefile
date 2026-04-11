@@ -1,7 +1,8 @@
 CC      = gcc
 CFLAGS  = -Wall -Wextra -std=c11 -pedantic
 TARGET  = server
-SRCS    = main.c network.c client_store.c messaging.c session.c command_handler.c
+SRCS    = main.c network.c client_store.c messaging.c \
+          session.c command_handler.c room_store.c room_session.c
 OBJS    = $(SRCS:.c=.o)
 
 all: $(TARGET)

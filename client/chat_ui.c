@@ -10,13 +10,11 @@
 
 static CRITICAL_SECTION print_lock;
 
-/* ── Private helpers ──────────────────────────────────────────────────────── */
 
 static void enable_virtual_terminal_processing(void)
 {
     HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD  mode   = 0;
-
     if (GetConsoleMode(handle, &mode)) {
         SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     }
@@ -29,9 +27,14 @@ static void get_timestamp(char *buffer, size_t size)
     strftime(buffer, size, "%H:%M", local);
 }
 
+static int is_room_message(const char *text)
+{
+    return text[0] == '[' && text[1] == '#';
+}
+
 static int is_peer_chat_message(const char *text)
 {
-    const char *colon     = strstr(text, ": ");
+    const char *colon = strstr(text, ": ");
     if (colon == NULL) return 0;
 
     int prefix_len = (int)(colon - text);
@@ -44,7 +47,45 @@ static int is_peer_chat_message(const char *text)
     return 1;
 }
 
-/* ── Public interface ─────────────────────────────────────────────────────── */
+/*
+ * Parses a room message of the form "[#roomname] sender: body" and prints
+ * each part in a distinct color. Returns 1 on success, 0 on parse failure.
+ */
+static int try_print_room_message(const char *timestamp, const char *text)
+{
+    const char *room_end = strchr(text, ']');
+    if (room_end == NULL) return 0;
+
+    int  room_name_len = (int)(room_end - text) - 2;  /* skip '[#' */
+    char room_name[ROOM_NAME_MAX];
+    strncpy(room_name, text + 2, room_name_len);
+    room_name[room_name_len] = '\0';
+
+    const char *rest  = room_end + 2;                 /* skip '] ' */
+    const char *colon = strstr(rest, ": ");
+
+    if (colon == NULL) {
+        /* System room notification (join / leave) */
+        printf(COLOR_GRAY " [%s]" COLOR_RESET " "
+               COLOR_MAGENTA "[#%s]" COLOR_RESET " "
+               COLOR_YELLOW "%s" COLOR_RESET,
+               timestamp, room_name, rest);
+        return 1;
+    }
+
+    int  sender_len = (int)(colon - rest);
+    char sender[USERNAME_MAX_LEN];
+    strncpy(sender, rest, sender_len);
+    sender[sender_len] = '\0';
+
+    printf(COLOR_GRAY " [%s]" COLOR_RESET " "
+           COLOR_MAGENTA "[#%s]" COLOR_RESET " "
+           COLOR_GREEN COLOR_BOLD "%s" COLOR_RESET
+           ": " COLOR_WHITE "%s" COLOR_RESET,
+           timestamp, room_name, sender, colon + 2);
+    return 1;
+}
+
 
 void chat_ui_init(void)
 {
@@ -84,11 +125,12 @@ void chat_ui_print_received(const char *text)
 
     EnterCriticalSection(&print_lock);
 
-    if (is_peer_chat_message(text)) {
+    if (is_room_message(text)) {
+        try_print_room_message(timestamp, text);
+    } else if (is_peer_chat_message(text)) {
         const char *colon    = strstr(text, ": ");
         int         name_len = (int)(colon - text);
         char        name[USERNAME_MAX_LEN];
-
         strncpy(name, text, name_len);
         name[name_len] = '\0';
 
@@ -109,10 +151,6 @@ void chat_ui_print_received(const char *text)
     LeaveCriticalSection(&print_lock);
 }
 
-/*
- * Prints a client-side notice (not from the server) in a distinct style so
- * the user can tell it apart from server messages.
- */
 void chat_ui_print_notice(const char *text)
 {
     EnterCriticalSection(&print_lock);

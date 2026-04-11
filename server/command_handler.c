@@ -1,13 +1,29 @@
 #include "command_handler.h"
 #include "session.h"
+#include "room_session.h"
 #include "messaging.h"
 #include <string.h>
+
+static int is_join_room_command(const char *message)
+{
+    return message[0] == '#';
+}
 
 static void handle_choosing_peer_input(int client_index, const char *message,
                                         ServerContext *ctx)
 {
     if (strcmp(message, "/list") == 0) {
         messaging_send_connected_users_list(client_index, ctx);
+        return;
+    }
+
+    if (strcmp(message, "/rooms") == 0) {
+        messaging_send_room_list(client_index, ctx);
+        return;
+    }
+
+    if (is_join_room_command(message)) {
+        room_session_join(client_index, message + 1, ctx);
         return;
     }
 
@@ -37,6 +53,27 @@ static void handle_in_chat_input(int client_index, const char *message,
     messaging_forward_chat_message(client_index, message, ctx);
 }
 
+static void handle_in_room_input(int client_index, const char *message,
+                                  ServerContext *ctx)
+{
+    if (strcmp(message, "/leave") == 0) {
+        room_session_leave(client_index, ctx);
+        return;
+    }
+
+    if (strcmp(message, "/list") == 0) {
+        messaging_send_connected_users_list(client_index, ctx);
+        return;
+    }
+
+    if (strcmp(message, "/rooms") == 0) {
+        messaging_send_room_list(client_index, ctx);
+        return;
+    }
+
+    room_session_broadcast_message(client_index, message, ctx);
+}
+
 void command_handler_process(int client_index, const char *message,
                               ServerContext *ctx)
 {
@@ -51,6 +88,10 @@ void command_handler_process(int client_index, const char *message,
 
         case STATE_IN_CHAT:
             handle_in_chat_input(client_index, message, ctx);
+            break;
+
+        case STATE_IN_ROOM:
+            handle_in_room_input(client_index, message, ctx);
             break;
 
         default:
