@@ -10,6 +10,7 @@
 
 static CRITICAL_SECTION print_lock;
 
+/* ── Private helpers ──────────────────────────────────────────────────────── */
 
 static void enable_virtual_terminal_processing(void)
 {
@@ -28,12 +29,7 @@ static void get_timestamp(char *buffer, size_t size)
     strftime(buffer, size, "%H:%M", local);
 }
 
-/*
- * Returns 1 if the text looks like a peer chat message.
- * A chat message matches the pattern "username: body" where username
- * contains no whitespace and is shorter than USERNAME_MAX_LEN.
- */
-static int is_chat_message(const char *text)
+static int is_peer_chat_message(const char *text)
 {
     const char *colon     = strstr(text, ": ");
     if (colon == NULL) return 0;
@@ -48,13 +44,14 @@ static int is_chat_message(const char *text)
     return 1;
 }
 
+/* ── Public interface ─────────────────────────────────────────────────────── */
 
 void chat_ui_init(void)
 {
     enable_virtual_terminal_processing();
     InitializeCriticalSection(&print_lock);
 
-    printf("\033[2J\033[H");   /* clear screen, cursor to top-left */
+    printf("\033[2J\033[H");
     printf(COLOR_CYAN COLOR_BOLD HEADER_LINE COLOR_RESET "\n");
     printf(COLOR_CYAN COLOR_BOLD
            "  CHAT  |  Servidor: %s:%d"
@@ -87,7 +84,7 @@ void chat_ui_print_received(const char *text)
 
     EnterCriticalSection(&print_lock);
 
-    if (is_chat_message(text)) {
+    if (is_peer_chat_message(text)) {
         const char *colon    = strstr(text, ": ");
         int         name_len = (int)(colon - text);
         char        name[USERNAME_MAX_LEN];
@@ -95,12 +92,10 @@ void chat_ui_print_received(const char *text)
         strncpy(name, text, name_len);
         name[name_len] = '\0';
 
-        const char *body = colon + 2;
-
         printf(COLOR_GRAY " [%s]" COLOR_RESET " "
                COLOR_GREEN COLOR_BOLD "%s" COLOR_RESET
                ": " COLOR_WHITE "%s" COLOR_RESET,
-               timestamp, name, body);
+               timestamp, name, colon + 2);
     } else {
         printf(COLOR_GRAY " [%s]" COLOR_RESET " "
                COLOR_YELLOW "%s" COLOR_RESET,
@@ -108,10 +103,20 @@ void chat_ui_print_received(const char *text)
     }
 
     size_t len = strlen(text);
-    if (len > 0 && text[len - 1] != '\n') {
-        printf("\n");
-    }
+    if (len > 0 && text[len - 1] != '\n') printf("\n");
 
+    fflush(stdout);
+    LeaveCriticalSection(&print_lock);
+}
+
+/*
+ * Prints a client-side notice (not from the server) in a distinct style so
+ * the user can tell it apart from server messages.
+ */
+void chat_ui_print_notice(const char *text)
+{
+    EnterCriticalSection(&print_lock);
+    printf(COLOR_CYAN " [*] " COLOR_RESET COLOR_DIM "%s" COLOR_RESET "\n", text);
     fflush(stdout);
     LeaveCriticalSection(&print_lock);
 }

@@ -13,6 +13,7 @@
 
 void chat_ui_init(void);
 void chat_ui_print_received(const char *text);
+void chat_ui_print_notice(const char *text);
 void chat_ui_print_disconnect_notice(void);
 void chat_ui_clear_prompt_line(void);
 void chat_ui_show_prompt(void);

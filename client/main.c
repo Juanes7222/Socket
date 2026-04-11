@@ -5,10 +5,12 @@
 #include "receiver.h"
 #include "input_handler.h"
 #include "chat_ui.h"
+#include "chat_history.h"
 
 int main(void)
 {
     chat_ui_init();
+    chat_history_init();
 
     if (winsock_initialize() != 0) return 1;
 

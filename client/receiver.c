@@ -1,7 +1,7 @@
 #include "receiver.h"
 #include "chat_ui.h"
+#include "chat_history.h"
 #include "types.h"
-#include <stdio.h>
 
 DWORD WINAPI receiver_thread(LPVOID socket_param)
 {
@@ -15,6 +15,7 @@ DWORD WINAPI receiver_thread(LPVOID socket_param)
 
         chat_ui_clear_prompt_line();
         chat_ui_print_received(buffer);
+        chat_history_record_received(buffer);
         chat_ui_show_prompt();
     }
 
