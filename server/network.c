@@ -10,36 +10,47 @@
 
 int network_create_listening_socket(void)
 {
-    int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int listen_fd = socket(AF_INET6, SOCK_STREAM, 0);
     if (listen_fd < 0) {
         perror("socket");
         exit(EXIT_FAILURE);
     }
 
-    int reuse_addr = 1;
-    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,
-               &reuse_addr, sizeof(reuse_addr));
+    int reuse = 1;
+    if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,
+                   &reuse, sizeof(reuse)) < 0) {
+        perror("setsockopt SO_REUSEADDR");
+        close(listen_fd);
+        exit(EXIT_FAILURE);
+    }
 
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family      = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port        = htons(SERVER_PORT);
+    int ipv6only = 0;
+    if (setsockopt(listen_fd, IPPROTO_IPV6, IPV6_V6ONLY,
+                   &ipv6only, sizeof(ipv6only)) < 0) {
+        perror("setsockopt IPV6_V6ONLY");
+        close(listen_fd);
+        exit(EXIT_FAILURE);
+    }
 
-    if (bind(listen_fd, (struct sockaddr *)&server_addr,
-             sizeof(server_addr)) < 0) {
+    struct sockaddr_in6 address = {0};
+    address.sin6_family = AF_INET6;
+    address.sin6_port   = htons(SERVER_PORT);
+    address.sin6_addr   = in6addr_any;
+
+    if (bind(listen_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("bind");
         close(listen_fd);
         exit(EXIT_FAILURE);
     }
 
-    if (listen(listen_fd, 5) < 0) {
+    if (listen(listen_fd, SOMAXCONN) < 0) {
         perror("listen");
         close(listen_fd);
         exit(EXIT_FAILURE);
     }
 
-    printf("Server listening on port %d\n", SERVER_PORT);
+    printf("Server listening on port %d (IPv4 + IPv6 dual-stack)\n",
+           SERVER_PORT);
     return listen_fd;
 }
 
